@@ -24,10 +24,19 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
   const [showAnswers, setShowAnswers] = useState<{ [key: string]: boolean }>({});
   const [submittedAnswers, setSubmittedAnswers] = useState<{ [key: string]: boolean }>({});
   const [answerFeedback, setAnswerFeedback] = useState<{ [key: string]: { isCorrect: boolean; feedback: string; explanationSteps?: string[] } }>({});
+  const [fractionInput, setFractionInput] = useState<{ [key: string]: { numerator: string; denominator: string; isEditing: boolean } }>({});
 
   const handleExerciseClick = (exercise: Exercise) => {
     setSelectedExercise(selectedExercise === exercise.id ? null : exercise.id);
     onExerciseSelect?.(exercise);
+    
+    // Initialize fraction input state for this exercise
+    if (!fractionInput[exercise.id]) {
+      setFractionInput(prev => ({
+        ...prev,
+        [exercise.id]: { numerator: '', denominator: '', isEditing: false }
+      }));
+    }
   };
 
   const handleAnswerChange = (exerciseId: string, answer: string) => {
@@ -35,6 +44,51 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
       ...prev,
       [exerciseId]: answer
     }));
+  };
+
+  const handleFractionInput = (exerciseId: string, field: 'numerator' | 'denominator', value: string) => {
+    setFractionInput(prev => ({
+      ...prev,
+      [exerciseId]: {
+        ...prev[exerciseId],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleInsertFraction = (exerciseId: string) => {
+    const fraction = fractionInput[exerciseId];
+    if (!fraction.numerator || !fraction.denominator) return;
+
+    const fractionText = `\\frac{${fraction.numerator}}{${fraction.denominator}}`;
+    
+    // Add the fraction to the current answer
+    const currentAnswer = userAnswers[exerciseId] || '';
+    const newAnswer = currentAnswer + fractionText;
+    
+    handleAnswerChange(exerciseId, newAnswer);
+    
+    // Reset fraction input
+    setFractionInput(prev => ({
+      ...prev,
+      [exerciseId]: { numerator: '', denominator: '', isEditing: false }
+    }));
+  };
+
+  const toggleFractionEditor = (exerciseId: string) => {
+    setFractionInput(prev => ({
+      ...prev,
+      [exerciseId]: {
+        ...prev[exerciseId],
+        isEditing: !prev[exerciseId]?.isEditing
+      }
+    }));
+  };
+
+  const insertCommonFraction = (exerciseId: string, fraction: string) => {
+    const currentAnswer = userAnswers[exerciseId] || '';
+    const newAnswer = currentAnswer + fraction;
+    handleAnswerChange(exerciseId, newAnswer);
   };
 
   const handleSubmitAnswer = async (exerciseId: string) => {
@@ -163,6 +217,7 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
     setShowAnswers({});
     setSubmittedAnswers({});
     setAnswerFeedback({});
+    setFractionInput({});
   };
 
   const handlePrintExercises = () => {
@@ -259,14 +314,14 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
   if (exercises.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-6">
-          <div className="text-center text-muted-foreground">
-            <Brain className="w-8 h-8 mx-auto mb-2" />
-            <p>No exercises available yet.</p>
-            <p className="text-sm">Ask the AI tutor to create some practice problems!</p>
-          </div>
-        </CardContent>
-      </Card>
+      <CardContent className="pt-6">
+        <div className="text-center text-muted-foreground">
+          <Brain className="w-8 h-8 mx-auto mb-2" />
+          <p>No exercises available yet.</p>
+          <p className="text-sm">Ask the AI tutor to create some practice problems!</p>
+        </div>
+      </CardContent>
+    </Card>
     );
   }
 
@@ -342,7 +397,39 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
                   <label className="text-sm font-medium mb-2 block">Your Answer:</label>
                   <div className="space-y-2">
                     <div className="flex flex-wrap gap-1 mb-2">
-                      {['∞', '√', '%', 'π', '∑', '∫', '(', ')', '[', ']', '≠', '≤', '≥', '±', '×', '÷', '½', '⅓', '⅔', '¼', '¾', '⅛', '⅜', '⅝', '⅞'].map((symbol) => (
+                      {/* Common fractions */}
+                      {['½', '⅓', '⅔', '¼', '¾', '⅛', '⅜', '⅝', '⅞'].map((fraction) => (
+                        <Button
+                          key={fraction}
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            insertCommonFraction(exercise.id, fraction);
+                          }}
+                          className="h-8 w-8 p-0 text-sm font-mono"
+                        >
+                          {fraction}
+                        </Button>
+                      ))}
+                      
+                      {/* Fraction editor toggle */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFractionEditor(exercise.id);
+                        }}
+                        className="h-8 px-2 text-sm"
+                      >
+                        {fractionInput[exercise.id]?.isEditing ? 'Close' : 'Create Fraction'}
+                      </Button>
+                      
+                      {/* Other math symbols */}
+                      {['∞', '√', '%', 'π', '∑', '∫', '(', ')', '[', ']', '≠', '≤', '≥', '±', '×', '÷'].map((symbol) => (
                         <Button
                           key={symbol}
                           variant="outline"
@@ -350,19 +437,8 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const textarea = document.querySelector(`textarea[data-exercise-id="${exercise.id}"]`) as HTMLTextAreaElement;
-                            if (textarea) {
-                              const start = textarea.selectionStart;
-                              const end = textarea.selectionEnd;
-                              const currentValue = userAnswers[exercise.id] || '';
-                              const newValue = currentValue.slice(0, start) + symbol + currentValue.slice(end);
-                              handleAnswerChange(exercise.id, newValue);
-                              // Restore cursor position after the inserted symbol
-                              setTimeout(() => {
-                                textarea.focus();
-                                textarea.setSelectionRange(start + symbol.length, start + symbol.length);
-                              }, 0);
-                            }
+                            const currentAnswer = userAnswers[exercise.id] || '';
+                            handleAnswerChange(exercise.id, currentAnswer + symbol);
                           }}
                           className="h-8 w-8 p-0 text-sm font-mono"
                         >
@@ -370,11 +446,47 @@ export const ExerciseList = ({ lessonId, onExerciseSelect }: ExerciseListProps) 
                         </Button>
                       ))}
                     </div>
+                    
+                    {/* Fraction editor */}
+                    {fractionInput[exercise.id]?.isEditing && (
+                      <div className="flex items-center gap-2 mb-2 p-2 bg-muted rounded-md">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            placeholder="Num"
+                            value={fractionInput[exercise.id]?.numerator || ''}
+                            onChange={(e) => handleFractionInput(exercise.id, 'numerator', e.target.value)}
+                            className="w-12 h-8 text-center border rounded"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span>/</span>
+                          <input
+                            type="text"
+                            placeholder="Den"
+                            value={fractionInput[exercise.id]?.denominator || ''}
+                            onChange={(e) => handleFractionInput(exercise.id, 'denominator', e.target.value)}
+                            className="w-12 h-8 text-center border rounded"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInsertFraction(exercise.id);
+                          }}
+                          disabled={!fractionInput[exercise.id]?.numerator || !fractionInput[exercise.id]?.denominator}
+                        >
+                          Insert Fraction
+                        </Button>
+                      </div>
+                    )}
+                    
                     <Textarea
                       placeholder="Write your solution here..."
                       value={userAnswers[exercise.id] || ''}
                       onChange={(e) => handleAnswerChange(exercise.id, e.target.value)}
-                      className="min-h-20"
+                      className="min-h-20 font-mono"
                       data-exercise-id={exercise.id}
                     />
                   </div>
